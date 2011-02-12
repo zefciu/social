@@ -9,6 +9,7 @@ from pylons.wsgiapp import PylonsApp
 from routes.middleware import RoutesMiddleware
 
 from social.config.environment import load_environment
+from repoze.what.plugins.config import make_middleware_with_config as AuthMiddleware
 
 def make_app(global_conf, full_stack=True, static_files=True, **app_conf):
     """Create a Pylons WSGI application and return it
@@ -41,6 +42,10 @@ def make_app(global_conf, full_stack=True, static_files=True, **app_conf):
 
     # Routing/Session Middleware
     app = RoutesMiddleware(app, config['routes.map'])
+    app = AuthMiddleware(
+        app, config, app_conf['auth.what_config_file'], 
+        who_config_file = app_conf['auth.who_config_file']
+    )
     app = SessionMiddleware(app, config)
 
     # CUSTOM MIDDLEWARE HERE (filtered by error handling middlewares)

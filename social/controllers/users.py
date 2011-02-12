@@ -9,6 +9,8 @@ import formencode as fe
 from social.lib.base import BaseController, render
 from social.model import Session, User
 
+from repoze.who.api import get_api
+
 log = logging.getLogger(__name__)
 
 class LoginValidator(fe.FancyValidator):
@@ -41,6 +43,13 @@ class RegisterSchema(fe.Schema):
 
 class UsersController(BaseController):
 
+    def welcome(self):
+        if not request.environ.has_key('REMOTE_USER'):
+            abort(401)
+        else:
+            c.username = request.environ['REMOTE_USER']
+            return render('/users/welcome.mako')
+
     @validate(schema = RegisterSchema, form = 'register')
     def register(self):
         if hasattr(self, 'form_result'):
@@ -49,4 +58,30 @@ class UsersController(BaseController):
             Session.commit()
             redirect('/')
         else:
-            return render('users/register_form.mako')
+            return render('/users/register.mako')
+
+    def login(self):
+        c.message = ''
+        who_api = get_api(request.environ)
+        if 'login' in request.POST:
+            authenticated, headers = who_api.login({
+                'login': request.POST['login'],
+                'passwd': request.POST['passwd'],
+            })
+            if authenticated:
+                response.headers = headers
+                return redirect('/')
+            c.message = 'Zły login lub hasło'
+        else:
+             # Forcefully forget any existing credentials.
+             authenticated, headers = who_api.login({})
+ 
+        if 'REMOTE_USER' in request.environ:
+            del request.environ['REMOTE_USER']
+
+        return render('/users/login.mako')
+
+    def logout(self):
+        who_api = get_api(request.environ)
+        response.headers = who_api.forget()
+        return redirect('/login')
