@@ -4,10 +4,13 @@ import logging
 from pylons import request, response, session, tmpl_context as c, url
 from pylons.controllers.util import abort, redirect
 from pylons.decorators import validate
+from pylons.decorators.rest import restrict
 import formencode as fe
+from sqlalchemy.orm.exc import NoResultFound
 
 from social.lib.base import BaseController, render
-from social.model import Session, User
+from social.lib.predicates import is_friend
+from social.model import Session, User, Friendship
 
 from repoze.who.api import get_api
 
@@ -49,6 +52,75 @@ class UsersController(BaseController):
         else:
             c.username = request.environ['REMOTE_USER']
             return render('/users/welcome.mako')
+
+    def display(self, login):
+        try:
+            user = Session.query(User).filter(User.login == login).one()
+        except NoResultFound:
+            abort(404)
+
+        c.login = user.login    
+
+        if is_friend(user.login).is_met(request.environ):
+            return render('/users/display_full.mako')
+        else:
+            return render('users/suggest_friend.mako')
+
+    @restrict('POST')
+    def befriend(self, login):
+        try:
+            requester = Session.query(User).filter(
+                User.login == request.environ['REMOTE_USER']
+            ).one()
+        except (NoResultFound, KeyError):
+            abort(401)
+
+        try:
+            acceptor = Session.query(User).filter(
+                User.login == login
+            ).one()
+        except NoResultFound:
+            abort(404)
+
+        # Check if this side already requested friendship
+        try:
+            existing = Session.query(Friendship).filter(
+                (Friendship.requester_id == requester.id) &
+                (Friendship.acceptor_id == acceptor.id)
+            ).one()
+        except NoResultFound:
+            pass
+        else:
+            if existing.accepted:
+                c.message = u'Już jesteś przyjacielem tego użytkownika'
+            else:
+                c.message = u'Już wysłałeś zaproszenie do tego użytkownika. Poczekaj na akceptację'
+
+            return render('users/request_done.mako')
+
+        # Check if the other side already requested friendship
+        try:
+            existing = Session.query(Friendship).filter(
+                (Friendship.requester_id == acceptor.id) &
+                (Friendship.acceptor_id == requester.id)
+            ).one()
+        except NoResultFound:
+            friendship = Friendship(
+                requester_id = requester.id,
+                acceptor_id = acceptor.id,
+            )
+            Session.add(friendship)
+            Session.commit()
+            c.message = u'Wysłano zaproszenie do użytkownika %s.' % acceptor.login
+        else:
+            if existing.accepted:
+                c.message = u'Już jesteś przyjacielem tego użytkownika'
+            else:
+                existing.accepted = True
+                Session.commit()
+                c.message = u'Zostałeś przyjacielem użytkownika %s.' % acceptor.login
+        return render('users/request_done.mako')
+
 
     @validate(schema = RegisterSchema, form = 'register')
     def register(self):

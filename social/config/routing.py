@@ -23,6 +23,8 @@ def make_map(config):
     map.connect('/login', controller = 'users', action = 'login')
     map.connect('/logout', controller = 'users', action = 'logout')
     map.connect('/register', controller = 'users', action = 'register')
+    map.connect('/user/{login}', controller = 'users', action = 'display')
+    map.connect('/befriend/{login}', controller = 'users', action = 'befriend')
 
     map.connect('/{controller}/{action}')
     map.connect('/{controller}/{action}/{id}')
